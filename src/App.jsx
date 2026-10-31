@@ -44,17 +44,6 @@ export default function App() {
     <>
       <ScrollManager />
       <Routes>
-      <Route element={<SiteChrome />}>
-        <Route index element={<HomePage />} />
-        <Route path="property" element={<PropertyPage />} />
-        <Route path="prequalify" element={<PrequalIntro />} />
-        <Route path="prequalify/costs" element={<PrequalCosts />} />
-        <Route path="prequalify/funds" element={<PrequalFunds />} />
-        <Route path="prequalify/monthly" element={<PrequalMonthly />} />
-        <Route path="prequalify/details" element={<PrequalDetails />} />
-        <Route path="prequalify/done" element={<PrequalDone />} />
-        <Route path="*" element={<MissingPage />} />
-      </Route>
       <Route path="admin" element={<AdminPage />} />
       <Route path="dashboard" element={<DashLayout />}>
         <Route index element={<OverviewPage />} />
@@ -66,6 +55,17 @@ export default function App() {
         <Route path="activity" element={<ActivityPage />} />
         <Route path="documents" element={<DocumentsPage />} />
       </Route>
+      <Route element={<SiteChrome />}>
+        <Route index element={<HomePage />} />
+        <Route path="property" element={<PropertyPage />} />
+        <Route path="prequalify" element={<PrequalIntro />} />
+        <Route path="prequalify/costs" element={<PrequalCosts />} />
+        <Route path="prequalify/funds" element={<PrequalFunds />} />
+        <Route path="prequalify/monthly" element={<PrequalMonthly />} />
+        <Route path="prequalify/details" element={<PrequalDetails />} />
+        <Route path="prequalify/done" element={<PrequalDone />} />
+      </Route>
+      <Route path="*" element={<MissingPage />} />
     </Routes>
     </>
   );
