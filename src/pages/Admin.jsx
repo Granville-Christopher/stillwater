@@ -183,7 +183,7 @@ export function AdminPage() {
           </label>
           {service.ok && !service.admin && (
             <p className="form-error" role="alert">
-              The live server still does not have ADMIN_CODE. In Vercel, open Settings → Environment Variables, add ADMIN_CODE for Production, then Redeploy.
+              ADMIN_CODE is saved in Vercel, but this deploy does not have it yet. Open Deployments, Redeploy the latest Production deploy, and turn off Use existing Build Cache.
             </p>
           )}
           {error && <p className="form-error" role="alert">{error}</p>}

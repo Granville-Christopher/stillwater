@@ -1,25 +1,39 @@
-import { allow, fail, readBody } from "../../lib/http.js";
-
 export const config = { runtime: "nodejs" };
 
-export default function handler(req, res) {
-  allow(res);
+export default async function handler(req, res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-admin-code");
+  res.setHeader("Cache-Control", "no-store");
   if (req.method === "OPTIONS") {
     res.status(204).end();
     return;
   }
   if (req.method !== "POST") {
-    fail(res, 405, "Use POST.");
+    res.status(405).json({ ok: false, error: "Use POST." });
     return;
   }
   const expected = String((process.env || {}).ADMIN_CODE || "").trim();
   if (!expected) {
-    fail(res, 503, "Set ADMIN_CODE in the Vercel environment.");
+    res.status(503).json({ ok: false, error: "Set ADMIN_CODE in the Vercel environment." });
     return;
   }
-  const code = String(readBody(req).code || "").trim();
+  let body = req.body;
+  if (typeof body === "string") {
+    try { body = JSON.parse(body); } catch { body = {}; }
+  }
+  if (!body || typeof body !== "object") {
+    body = await new Promise((resolve) => {
+      let raw = "";
+      req.on("data", (chunk) => { raw += chunk; });
+      req.on("end", () => {
+        try { resolve(JSON.parse(raw || "{}")); } catch { resolve({}); }
+      });
+    });
+  }
+  const code = String(body.code || "").trim();
   if (code !== expected) {
-    fail(res, 401, "That code does not match.");
+    res.status(401).json({ ok: false, error: "That code does not match." });
     return;
   }
   res.status(200).json({ ok: true });
