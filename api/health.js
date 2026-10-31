@@ -1,17 +1,23 @@
-import { adminSecret, runtimeVar } from "../lib/runtime-env.js";
+export const config = { runtime: "edge" };
 
-export const config = { runtime: "nodejs" };
-
-export default function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Cache-Control", "no-store");
-  if (req.method === "OPTIONS") {
-    res.status(204).end();
-    return;
+export default async function handler(request) {
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: cors() });
   }
-  res.status(200).json({
-    ok: true,
-    admin: Boolean(adminSecret()),
-    mongo: Boolean(runtimeVar("MONGODB_URI")),
-  });
+  const env = process.env;
+  const admin = String(env["ADMIN_CODE"] || "").trim();
+  const mongo = String(env["MONGODB_URI"] || "").trim();
+  return Response.json(
+    { ok: true, admin: admin.length > 0, mongo: mongo.length > 0 },
+    { headers: cors() },
+  );
+}
+
+function cors() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, x-admin-code",
+    "Cache-Control": "no-store",
+  };
 }

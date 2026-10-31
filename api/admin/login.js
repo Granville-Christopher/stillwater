@@ -1,45 +1,34 @@
-import { adminCodeMatches, adminSecret } from "../../lib/runtime-env.js";
+export const config = { runtime: "edge" };
 
-export const config = { runtime: "nodejs" };
-
-async function readJson(req) {
-  if (req.body && typeof req.body === "object" && !Buffer.isBuffer(req.body) && req.body.code != null) {
-    return req.body;
+export default async function handler(request) {
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: cors() });
   }
-  if (typeof req.body === "string" && req.body.trim()) {
-    try { return JSON.parse(req.body); } catch { return {}; }
+  if (request.method !== "POST") {
+    return Response.json({ ok: false, error: "Use POST." }, { status: 405, headers: cors() });
   }
-  const raw = await new Promise((resolve, reject) => {
-    let text = "";
-    req.on("data", (chunk) => { text += chunk; });
-    req.on("end", () => resolve(text));
-    req.on("error", reject);
-  });
-  if (!raw) return {};
-  try { return JSON.parse(raw); } catch { return {}; }
+  const expected = String((process.env || {})["ADMIN_CODE"] || "").trim().replace(/^['"]|['"]$/g, "");
+  if (!expected) {
+    return Response.json({ ok: false, error: "ADMIN_CODE is not available to this function." }, { status: 503, headers: cors() });
+  }
+  let body = {};
+  try {
+    body = await request.json();
+  } catch {
+    body = {};
+  }
+  const code = String(body.code || "").trim().replace(/^['"]|['"]$/g, "");
+  if (!code || code !== expected) {
+    return Response.json({ ok: false, error: "That code does not match." }, { status: 401, headers: cors() });
+  }
+  return Response.json({ ok: true }, { headers: cors() });
 }
 
-export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-admin-code");
-  res.setHeader("Cache-Control", "no-store");
-  if (req.method === "OPTIONS") {
-    res.status(204).end();
-    return;
-  }
-  if (req.method !== "POST") {
-    res.status(405).json({ ok: false, error: "Use POST." });
-    return;
-  }
-  if (!adminSecret()) {
-    res.status(503).json({ ok: false, error: "The server could not read an admin code." });
-    return;
-  }
-  const body = await readJson(req);
-  if (!adminCodeMatches(body.code)) {
-    res.status(401).json({ ok: false, error: "That code does not match." });
-    return;
-  }
-  res.status(200).json({ ok: true });
+function cors() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, x-admin-code",
+    "Cache-Control": "no-store",
+  };
 }
