@@ -54,6 +54,7 @@ export function SiteChrome() {
             <Link to="/property" onClick={() => setOpen(false)}>The home</Link>
             <Link to="/#payment" onClick={() => setOpen(false)}>Monthly cost</Link>
             <Link to="/prequalify" onClick={() => setOpen(false)}>Pre-qualify</Link>
+            <Link to="/account" onClick={() => setOpen(false)}>Sign in</Link>
             <Link to="/dashboard" className="btn btn-primary nav-cta" onClick={() => setOpen(false)}>
               Your desk
             </Link>

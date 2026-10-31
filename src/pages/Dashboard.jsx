@@ -41,7 +41,7 @@ const LINKS = [
 ];
 
 export function DashLayout() {
-  const { state, figures, reset } = useAccount();
+  const { state, figures, signedIn, signOut } = useAccount();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -79,7 +79,11 @@ export function DashLayout() {
             </NavLink>
           ))}
         </nav>
-        <button type="button" className="text-btn" onClick={reset}>Reset this desk</button>
+        {signedIn ? (
+          <button type="button" className="text-btn" onClick={signOut}>Sign out</button>
+        ) : (
+          <Link to="/account" className="text-btn">Sign in</Link>
+        )}
       </aside>
       <div className="dash-main">
         <button
@@ -91,7 +95,21 @@ export function DashLayout() {
         >
           Menu
         </button>
-        <Outlet />
+        {signedIn ? (
+          <Outlet />
+        ) : (
+          <div className="desk-page">
+            <section className="panel stack-form">
+              <p className="eyebrow">Your desk</p>
+              <h1>Create an account to open your own file</h1>
+              <p>Each buyer sees only their own funds, payments, and balance. Sign in if you already have an account.</p>
+              <div className="btn-row">
+                <Link to="/account" className="btn btn-primary">Create account</Link>
+                <Link to="/prequalify" className="btn btn-ghost">Get pre-qualified</Link>
+              </div>
+            </section>
+          </div>
+        )}
       </div>
     </div>
   );

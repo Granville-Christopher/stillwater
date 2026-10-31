@@ -1,3 +1,4 @@
+import { applyLocalDeposit, cacheBuyerRecord, listLocalBuyers } from "./buyers.js";
 import { cents, DEFAULT_DOWN_PAYMENT, PREQUAL_CAP, PRICE, usd } from "./data.js";
 
 const KEY = "stillwater-admin-v1";
@@ -213,9 +214,21 @@ export function loadTerms() {
   const data = loadAdmin();
   return {
     downPayment: data.downPayment,
-    deposited: data.deposited,
-    deposits: data.deposits,
+    deposited: 0,
+    deposits: [],
   };
+}
+
+export async function listBuyers() {
+  if (!isLocalSession()) {
+    try {
+      const result = await request("/api/buyers/list");
+      return result.buyers || [];
+    } catch (error) {
+      if (error.status && error.status !== 503) return [];
+    }
+  }
+  return listLocalBuyers();
 }
 
 export async function refreshDesk() {
@@ -252,45 +265,29 @@ export async function saveDownPayment(amount) {
   }
   {
     const data = loadAdmin();
-    if (next < data.deposited) return { ok: false, error: `The down payment cannot be less than the ${usd(data.deposited)} already deposited.` };
     data.downPayment = next;
     cacheDesk(data);
     return { ok: true };
   }
 }
 
-export async function addDeposit(amount) {
+export async function addDeposit(amount, buyerId) {
   const usdAmount = cents(Number(amount));
+  if (!buyerId) return { ok: false, error: "Select the buyer this money belongs to." };
   if (!Number.isFinite(usdAmount) || usdAmount <= 0) return { ok: false, error: "Enter an amount greater than zero." };
   if (!isLocalSession()) {
     try {
-      const result = await request("/api/desk/deposit", {
+      const result = await request("/api/buyers/deposit", {
         method: "POST",
-        body: JSON.stringify({ amount: usdAmount }),
+        body: JSON.stringify({ buyerId, amount: usdAmount }),
       });
-      cacheDesk(mergeDesk({ ...loadAdmin(), ...result.desk }));
-      return { ok: true, deposited: result.deposited };
+      if (result.buyer) cacheBuyerRecord(result.buyer);
+      return { ok: true, buyer: result.buyer, deposited: result.deposited };
     } catch (error) {
       if (error.status && error.status !== 503) return { ok: false, error: error.message };
     }
   }
-  {
-    const data = loadAdmin();
-    const ceiling = Math.min(PREQUAL_CAP, data.downPayment);
-    const room = cents(ceiling - data.deposited);
-    if (usdAmount > room + 0.001) {
-      return {
-        ok: false,
-        error: room <= 0
-          ? `Pre-qualified funds are already at ${usd(ceiling)}.`
-          : `That would pass ${usd(ceiling)}. ${usd(room)} can still be added.`,
-      };
-    }
-    data.deposited = cents(data.deposited + usdAmount);
-    data.deposits = [{ id: crypto.randomUUID(), at: new Date().toISOString(), amount: usdAmount }, ...data.deposits];
-    cacheDesk(data);
-    return { ok: true, deposited: data.deposited };
-  }
+  return applyLocalDeposit(buyerId, usdAmount);
 }
 
 export async function savePaymentDetails({ rails, wire, cash }) {

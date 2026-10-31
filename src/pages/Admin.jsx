@@ -7,6 +7,7 @@ import {
   enterAdmin,
   hasLocalAccount,
   leaveAdmin,
+  listBuyers,
   loadAdmin,
   RAIL_IDS,
   refreshDesk,
@@ -89,6 +90,8 @@ export function AdminPage() {
   const [depositInput, setDepositInput] = useState("");
   const [fileError, setFileError] = useState("");
   const [fileNote, setFileNote] = useState("");
+  const [buyers, setBuyers] = useState([]);
+  const [buyerId, setBuyerId] = useState("");
 
   useEffect(() => {
     checkAdminService().then((next) => {
@@ -98,9 +101,20 @@ export function AdminPage() {
       setData(desk);
       setDownInput(String(desk.downPayment));
     });
-    const refresh = () => setData(loadAdmin());
+    listBuyers().then((next) => {
+      setBuyers(next);
+      setBuyerId((current) => current || next[0]?.id || next[0]?.email || "");
+    });
+    const refresh = () => {
+      setData(loadAdmin());
+      listBuyers().then(setBuyers);
+    };
     window.addEventListener("stillwater-admin", refresh);
-    return () => window.removeEventListener("stillwater-admin", refresh);
+    window.addEventListener("stillwater-buyer", refresh);
+    return () => {
+      window.removeEventListener("stillwater-admin", refresh);
+      window.removeEventListener("stillwater-buyer", refresh);
+    };
   }, []);
 
   async function submitAuth(event) {
@@ -127,6 +141,9 @@ export function AdminPage() {
     const desk = await refreshDesk();
     setData(desk);
     setDownInput(String(desk.downPayment));
+    const nextBuyers = await listBuyers();
+    setBuyers(nextBuyers);
+    setBuyerId(nextBuyers[0]?.id || nextBuyers[0]?.email || "");
   }
 
   async function saveDown(event) {
@@ -144,7 +161,7 @@ export function AdminPage() {
 
   async function recordDeposit(event) {
     event.preventDefault();
-    const result = await addDeposit(depositInput);
+    const result = await addDeposit(depositInput, buyerId);
     if (!result.ok) {
       setFileError(result.error);
       setFileNote("");
@@ -152,8 +169,12 @@ export function AdminPage() {
     }
     setDepositInput("");
     setFileError("");
-    setFileNote("Added to pre-qualified funds. Buyers see the new balance.");
-    setData(loadAdmin());
+    const nextBuyers = await listBuyers();
+    setBuyers(nextBuyers);
+    const selected = result.buyer || nextBuyers.find((buyer) => buyer.id === buyerId || buyer.email === buyerId);
+    setFileNote(selected
+      ? `Added to ${selected.name || selected.email}'s pre-qualified funds.`
+      : "Added to that buyer's pre-qualified funds.");
   }
 
   function updateRail(id, field, value) {
@@ -171,6 +192,19 @@ export function AdminPage() {
       [block]: { ...current[block], [field]: value },
     }));
   }
+
+  const selectedBuyer = buyers.find((buyer) => buyer.id === buyerId || buyer.email === buyerId);
+  const purchaseRows = selectedBuyer
+    ? (selectedBuyer.payments || []).map((payment) => ({
+        ...payment,
+        name: selectedBuyer.name,
+        email: selectedBuyer.email,
+        coins: payment.coins || [{ asset: payment.asset, usd: payment.usd, cryptoAmount: payment.cryptoAmount }],
+        toDown: payment.toDown || 0,
+        toClosing: payment.toClosing || 0,
+        toPrincipal: payment.toPrincipal || 0,
+      }))
+    : data.purchases;
 
   async function saveDetails(event) {
     event.preventDefault();
@@ -239,7 +273,7 @@ export function AdminPage() {
             <div>
               <p className="eyebrow">Admin</p>
               <h1>Payment details and purchases</h1>
-              <p>Set the down payment and record money already deposited. Buyers also see the wire, cash mailing address, and coin addresses you save below.</p>
+              <p>Set the down payment, then choose a buyer and add funds to that person only. Payment details below are shared.</p>
             </div>
             <button type="button" className="btn btn-ghost" onClick={() => { leaveAdmin(); setOpen(false); setMode(hasLocalAccount() ? "login" : "register"); setPassword(""); setConfirm(""); }}>Sign out</button>
           </div>
@@ -256,20 +290,31 @@ export function AdminPage() {
 
           <form className="panel stack-form" onSubmit={recordDeposit}>
             <h2>Already deposited</h2>
-            <p>This amount is added to pre-qualified funds. Those funds are {usd(PREQUAL_CAP)} and cannot go higher.</p>
+            <p>Choose the buyer first. The amount is added only to that person's pre-qualified funds, up to {usd(PREQUAL_CAP)}.</p>
+            <label>
+              Buyer
+              <select value={buyerId} onChange={(event) => { setBuyerId(event.target.value); setFileNote(""); }}>
+                {buyers.length === 0 && <option value="">No buyer has created an account yet</option>}
+                {buyers.map((buyer) => (
+                  <option key={buyer.id || buyer.email} value={buyer.id || buyer.email}>
+                    {(buyer.name || "Buyer")} · {buyer.email} · {usd(buyer.deposited || 0)}
+                  </option>
+                ))}
+              </select>
+            </label>
             <div className="fund-readout">
-              <span>Pre-qualified funds</span>
-              <strong>{usd(data.deposited)}</strong>
-              <em>{usd(Math.max(0, PREQUAL_CAP - data.deposited))} still fits under {usd(PREQUAL_CAP)}</em>
+              <span>This buyer's pre-qualified funds</span>
+              <strong>{usd(selectedBuyer?.deposited || 0)}</strong>
+              <em>{usd(Math.max(0, PREQUAL_CAP - (selectedBuyer?.deposited || 0)))} still fits under {usd(PREQUAL_CAP)}</em>
             </div>
             <label>
               Amount to add
-              <input inputMode="decimal" value={depositInput} onChange={(event) => { setDepositInput(event.target.value); setFileNote(""); }} placeholder="0.00" />
+              <input inputMode="decimal" value={depositInput} onChange={(event) => { setDepositInput(event.target.value); setFileNote(""); }} placeholder="0.00" disabled={!buyerId} />
             </label>
-            <button type="submit" className="btn btn-primary">Add to pre-qualified funds</button>
-            {data.deposits.length > 0 && (
+            <button type="submit" className="btn btn-primary" disabled={!buyerId}>Add to this buyer</button>
+            {selectedBuyer?.deposits?.length > 0 && (
               <ul className="rail-list">
-                {data.deposits.map((deposit) => (
+                {selectedBuyer.deposits.map((deposit) => (
                   <li key={deposit.id}>
                     <strong>{usd(deposit.amount, 2)}</strong>
                     <span>{when(deposit.at)}</span>
@@ -343,9 +388,9 @@ export function AdminPage() {
           </form>
 
           <section className="panel">
-            <h2>People who paid</h2>
-            {data.purchases.length === 0 ? (
-              <p>No purchase has been recorded yet.</p>
+            <h2>{selectedBuyer ? `Payments by ${selectedBuyer.name || selectedBuyer.email}` : "People who paid"}</h2>
+            {purchaseRows.length === 0 ? (
+              <p>{selectedBuyer ? "This buyer has not recorded a payment yet." : "No purchase has been recorded yet."}</p>
             ) : (
               <div className="table-wrap">
                 <table>
@@ -361,12 +406,12 @@ export function AdminPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.purchases.map((purchase) => (
+                    {purchaseRows.map((purchase) => (
                       <tr key={purchase.id}>
                         <td>{when(purchase.at)}</td>
                         <td>{purchase.name}{purchase.email ? ` · ${purchase.email}` : ""}</td>
                         <td>{usd(purchase.usd, 2)}</td>
-                        <td>{purchase.coins.map((coin) => cryptoText(coin.asset, coin.cryptoAmount)).join(", ")}</td>
+                        <td>{(purchase.coins || []).map((coin) => cryptoText(coin.asset, coin.cryptoAmount)).join(", ") || "—"}</td>
                         <td>{usd(purchase.toDown, 2)}</td>
                         <td>{usd(purchase.toClosing, 2)}</td>
                         <td>{usd(purchase.toPrincipal, 2)}</td>

@@ -1,42 +1,73 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { loadTerms, recordPurchase, refreshDesk } from "./admin.js";
+import { loadAdmin, recordPurchase, refreshDesk } from "./admin.js";
+import {
+  buyerFunding,
+  buyerSessionOn,
+  leaveBuyer,
+  loadBuyerAccount,
+  refreshBuyer,
+  saveBuyerDesk,
+} from "./buyers.js";
 import { allocate, buildFigures, cents, freshAccount, RATES, splitAcrossAssets } from "./data.js";
 
-const KEY = "stillwater-desk-v1";
 const AccountContext = createContext(null);
 
-function loadAccount() {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return freshAccount();
-    const saved = JSON.parse(raw);
-    return {
-      ...freshAccount(),
-      ...saved,
-      balances: { ...freshAccount().balances, ...saved.balances },
-      docs: { ...freshAccount().docs, ...saved.docs },
-      payments: Array.isArray(saved.payments) ? saved.payments : [],
-    };
-  } catch {
-    return freshAccount();
-  }
+function unsignedAccount() {
+  return freshAccount();
+}
+
+function termsFor(account) {
+  const admin = loadAdmin();
+  const funding = buyerFunding(account);
+  return {
+    downPayment: admin.downPayment,
+    deposited: funding.deposited,
+    deposits: funding.deposits,
+  };
 }
 
 export function AccountProvider({ children }) {
-  const [state, setState] = useState(loadAccount);
-  const [terms, setTerms] = useState(loadTerms);
+  const [state, setState] = useState(() => loadBuyerAccount() || unsignedAccount());
+  const [signedIn, setSignedIn] = useState(buyerSessionOn);
+  const [terms, setTerms] = useState(() => termsFor(loadBuyerAccount()));
+
+  function applyBuyer(account) {
+    if (!account) {
+      setSignedIn(false);
+      setState(unsignedAccount());
+      setTerms(termsFor(null));
+      return;
+    }
+    setSignedIn(true);
+    setState(account);
+    setTerms(termsFor(account));
+  }
 
   useEffect(() => {
-    localStorage.setItem(KEY, JSON.stringify(state));
-  }, [state]);
-
-  useEffect(() => {
-    refreshDesk().then(() => setTerms(loadTerms()));
-    const refresh = () => setTerms(loadTerms());
+    refreshDesk().then(() => setTerms(termsFor(loadBuyerAccount())));
+    refreshBuyer().then((buyer) => {
+      if (buyerSessionOn()) applyBuyer(buyer || loadBuyerAccount());
+      else applyBuyer(null);
+    });
+    const refresh = () => {
+      const account = loadBuyerAccount();
+      setSignedIn(buyerSessionOn());
+      if (account) {
+        setState(account);
+        setTerms(termsFor(account));
+      } else if (!buyerSessionOn()) {
+        setState(unsignedAccount());
+        setTerms(termsFor(null));
+      } else {
+        setTerms(termsFor(loadBuyerAccount()));
+      }
+    };
     window.addEventListener("stillwater-admin", refresh);
+    window.addEventListener("stillwater-buyer", refresh);
     window.addEventListener("storage", refresh);
     return () => {
       window.removeEventListener("stillwater-admin", refresh);
+      window.removeEventListener("stillwater-buyer", refresh);
       window.removeEventListener("storage", refresh);
     };
   }, []);
@@ -46,25 +77,33 @@ export function AccountProvider({ children }) {
 
     function setDownPercent(downPercent) {
       const next = Math.min(0.5, Math.max(0.1, downPercent));
-      setState((current) => ({ ...current, downPercent: next }));
-    }
-
-    function completePrequal(profile) {
-      setState((current) => ({
-        ...current,
-        ...profile,
-        prequalified: true,
-      }));
+      setState((current) => {
+        const updated = { ...current, downPercent: next };
+        if (buyerSessionOn()) saveBuyerDesk(updated);
+        return updated;
+      });
     }
 
     function toggleDoc(key) {
-      setState((current) => ({
-        ...current,
-        docs: { ...current.docs, [key]: !current.docs[key] },
-      }));
+      setState((current) => {
+        const updated = {
+          ...current,
+          docs: { ...current.docs, [key]: !current.docs[key] },
+        };
+        if (buyerSessionOn()) saveBuyerDesk(updated);
+        return updated;
+      });
+    }
+
+    function persist(updated) {
+      setState(updated);
+      if (buyerSessionOn()) saveBuyerDesk(updated);
     }
 
     function pay(assetOrAssets, usdAmount) {
+      if (!buyerSessionOn()) {
+        return { ok: false, error: "Create an account to use this desk." };
+      }
       const chosen = (Array.isArray(assetOrAssets) ? assetOrAssets : [assetOrAssets]).filter(Boolean);
       if (chosen.length === 0) {
         return { ok: false, error: "Select at least one coin." };
@@ -94,13 +133,14 @@ export function AccountProvider({ children }) {
           cryptoAmount: 0,
           ...split,
         };
-        setState((current) => ({
-          ...current,
-          paidDown: cents(current.paidDown + split.toDown),
-          paidClosing: cents(current.paidClosing + split.toClosing),
-          paidPrincipal: cents(current.paidPrincipal + split.toPrincipal),
-          payments: [payment, ...current.payments],
-        }));
+        const updated = {
+          ...state,
+          paidDown: cents(state.paidDown + split.toDown),
+          paidClosing: cents(state.paidClosing + split.toClosing),
+          paidPrincipal: cents(state.paidPrincipal + split.toPrincipal),
+          payments: [payment, ...state.payments],
+        };
+        persist(updated);
         recordPurchase({
           id: crypto.randomUUID(),
           at: payment.at,
@@ -173,14 +213,15 @@ export function AccountProvider({ children }) {
         { usd: 0, toDown: 0, toClosing: 0, toPrincipal: 0 },
       );
 
-      setState((current) => ({
-        ...current,
+      const updated = {
+        ...state,
         paidDown,
         paidClosing,
         paidPrincipal,
         balances,
-        payments: [...payments, ...current.payments],
-      }));
+        payments: [...payments, ...state.payments],
+      };
+      persist(updated);
 
       recordPurchase({
         id: crypto.randomUUID(),
@@ -199,13 +240,16 @@ export function AccountProvider({ children }) {
       return { ok: true, payment: payments[0], payments };
     }
 
-    function reset() {
-      const next = freshAccount();
-      localStorage.removeItem(KEY);
-      setState(next);
+    function signOut() {
+      leaveBuyer();
+      applyBuyer(null);
     }
 
-    return { state, figures, setDownPercent, completePrequal, toggleDoc, pay, reset };
+    function acceptBuyer(buyer) {
+      applyBuyer(buyer);
+    }
+
+    return { state, figures, signedIn, setDownPercent, toggleDoc, pay, signOut, acceptBuyer };
   }, [state, terms]);
 
   return <AccountContext.Provider value={api}>{children}</AccountContext.Provider>;

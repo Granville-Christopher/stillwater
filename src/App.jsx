@@ -4,6 +4,8 @@ import { SiteChrome } from "./components.jsx";
 import { HomePage, MissingPage } from "./pages/Home.jsx";
 import { PropertyPage } from "./pages/Property.jsx";
 import {
+  AccountPage,
+  PrequalAccount,
   PrequalCosts,
   PrequalDetails,
   PrequalDone,
@@ -45,6 +47,7 @@ export default function App() {
       <ScrollManager />
       <Routes>
       <Route path="admin" element={<AdminPage />} />
+      <Route path="account" element={<AccountPage />} />
       <Route path="dashboard" element={<DashLayout />}>
         <Route index element={<OverviewPage />} />
         <Route path="property" element={<DashPropertyPage />} />
@@ -62,6 +65,7 @@ export default function App() {
         <Route path="prequalify/costs" element={<PrequalCosts />} />
         <Route path="prequalify/funds" element={<PrequalFunds />} />
         <Route path="prequalify/monthly" element={<PrequalMonthly />} />
+        <Route path="prequalify/account" element={<PrequalAccount />} />
         <Route path="prequalify/details" element={<PrequalDetails />} />
         <Route path="prequalify/done" element={<PrequalDone />} />
       </Route>

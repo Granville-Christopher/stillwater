@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
+import { enterBuyer, registerBuyer } from "../buyers.js";
 import { CheckList, useTitle } from "../components.jsx";
 import {
   CLOSING_COST,
@@ -61,7 +62,7 @@ export function PrequalIntro() {
         <div>
           <h2>Questions?</h2>
           <p>A person can walk the same numbers with you. Hours are Monday to Friday, 8am–6pm ET, and Saturday, 9am–1pm ET.</p>
-          <Link to="/prequalify/details" className="btn btn-line">Start your file</Link>
+          <Link to="/prequalify/account" className="btn btn-line">Create your account</Link>
         </div>
       </section>
       <p className="fine">The {usd(LISTING_ESTIMATE)} figure is an estimate for this home at 20% down. It is not a loan approval.</p>
@@ -133,7 +134,7 @@ export function PrequalFunds() {
 
 export function PrequalMonthly() {
   useTitle("Monthly payment — Stillwater");
-  const { figures } = useAccount();
+  const { figures, signedIn } = useAccount();
   const rows = [
     ["Principal and interest", figures.parts.pi],
     ["Property tax", figures.parts.tax],
@@ -169,101 +170,158 @@ export function PrequalMonthly() {
       <p className="fine">Down payment {usd(figures.plannedDown)} · loan {usd(figures.loan)} · closing costs {usd(CLOSING_COST)}. Utilities not included.</p>
       <div className="btn-row">
         <Link to="/prequalify/funds" className="btn btn-ghost">Back</Link>
-        <Link to="/prequalify/details" className="btn btn-primary">Add your details</Link>
+        <Link to={signedIn ? "/prequalify/done" : "/prequalify/account"} className="btn btn-primary">
+          {signedIn ? "Finish" : "Create your account"}
+        </Link>
       </div>
     </Shell>
   );
 }
 
 export function PrequalDetails() {
-  useTitle("Your details — Stillwater");
-  const { state, completePrequal } = useAccount();
-  const navigate = useNavigate();
-  const [form, setForm] = useState({
-    name: state.name,
-    email: state.email,
-    phone: state.phone,
-    timeline: state.timeline || "60–90 days",
-    agreed: false,
-  });
-  const [error, setError] = useState("");
+  return <Navigate to="/prequalify/account" replace />;
+}
 
-  function update(key, value) {
-    setForm((current) => ({ ...current, [key]: value }));
+export function BuyerAuthPage({ next = "/dashboard", step, backTo }) {
+  useTitle(step ? "Create your account — Stillwater" : "Your account — Stillwater");
+  const { signedIn, acceptBuyer } = useAccount();
+  const navigate = useNavigate();
+  const [mode, setMode] = useState("register");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  if (signedIn) {
+    return <Navigate to={next} replace />;
   }
 
-  function submit(event) {
+  async function submit(event) {
     event.preventDefault();
-    if (form.name.trim().length < 2) {
-      setError("Add the name that should sit on this file.");
+    setBusy(true);
+    setError("");
+    let result;
+    try {
+      result = mode === "register"
+        ? await registerBuyer({ name, email, password, confirm, phone })
+        : await enterBuyer({ email, password });
+    } catch {
+      result = { ok: false, error: "The account could not be opened." };
+    }
+    setBusy(false);
+    if (!result.ok) {
+      setError(result.error);
       return;
     }
-    if (!form.email.includes("@") || !form.email.includes(".")) {
-      setError("Add an email so the file has a place to live.");
-      return;
-    }
-    if (!form.agreed) {
-      setError("Confirm this is an estimate, not a loan approval.");
-      return;
-    }
-    completePrequal({
-      name: form.name.trim(),
-      email: form.email.trim(),
-      phone: form.phone.trim(),
-      timeline: form.timeline,
-    });
-    navigate("/prequalify/done");
+    acceptBuyer(result.buyer);
+    navigate(next);
+  }
+
+  const form = (
+    <form className="stack-form" onSubmit={submit}>
+      <div className="auth-switch" role="tablist">
+        <button type="button" className={mode === "login" ? "on" : ""} onClick={() => { setMode("login"); setError(""); }}>
+          Sign in
+        </button>
+        <button type="button" className={mode === "register" ? "on" : ""} onClick={() => { setMode("register"); setError(""); }}>
+          Create account
+        </button>
+      </div>
+      {mode === "register" && (
+        <label>
+          Full name
+          <input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" />
+        </label>
+      )}
+      <label>
+        Email
+        <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" />
+      </label>
+      {mode === "register" && (
+        <label>
+          Phone, if you want a call back
+          <input value={phone} onChange={(event) => setPhone(event.target.value)} autoComplete="tel" />
+        </label>
+      )}
+      <label>
+        Password
+        <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === "register" ? "new-password" : "current-password"} />
+      </label>
+      {mode === "register" && (
+        <label>
+          Confirm password
+          <input type="password" value={confirm} onChange={(event) => setConfirm(event.target.value)} autoComplete="new-password" />
+        </label>
+      )}
+      {error && <p className="form-error" role="alert">{error}</p>}
+      {step ? (
+        <div className="btn-row">
+          <Link to={backTo || "/prequalify/monthly"} className="btn btn-ghost">Back</Link>
+          <button type="submit" className="btn btn-primary" disabled={busy}>
+            {busy ? "Please wait…" : mode === "register" ? "Create account" : "Sign in"}
+          </button>
+        </div>
+      ) : (
+        <button type="submit" className="btn btn-primary" disabled={busy}>
+          {busy ? "Please wait…" : mode === "register" ? "Create account" : "Sign in"}
+        </button>
+      )}
+    </form>
+  );
+
+  if (!step) {
+    return (
+      <main className="admin-shell">
+        <header className="admin-bar">
+          <Link to="/" className="brand-link">Stillwater</Link>
+          <Link to="/prequalify">Pre-qualify</Link>
+        </header>
+        <section className="panel stack-form admin-card">
+          <p className="eyebrow">Buyer</p>
+          <h1>{mode === "register" ? "Create your account" : "Sign in"}</h1>
+          <p>
+            {mode === "register"
+              ? "Your desk, funds, and payments stay on this account. Another buyer starts from a clean file."
+              : "Sign in to open the desk that belongs to this email."}
+          </p>
+          {form}
+        </section>
+      </main>
+    );
   }
 
   return (
     <Shell
-      step="4"
-      title="Who is buying"
-      lede="This stays on your desk in this browser. It is not a credit application."
+      step={step}
+      title={mode === "register" ? "Create your account" : "Sign in"}
+      lede={mode === "register"
+        ? "Your desk and pre-qualified funds stay on this account. Another person who registers gets their own file."
+        : "Sign in to open the desk that belongs to this email."}
     >
-      <form className="stack-form" onSubmit={submit}>
-        <label>
-          Full name
-          <input value={form.name} onChange={(event) => update("name", event.target.value)} autoComplete="name" />
-        </label>
-        <label>
-          Email
-          <input type="email" value={form.email} onChange={(event) => update("email", event.target.value)} autoComplete="email" />
-        </label>
-        <label>
-          Phone, if you want a call back
-          <input value={form.phone} onChange={(event) => update("phone", event.target.value)} autoComplete="tel" />
-        </label>
-        <label>
-          Timing
-          <select value={form.timeline} onChange={(event) => update("timeline", event.target.value)}>
-            <option>Within 30 days</option>
-            <option>60–90 days</option>
-            <option>Just comparing the cost</option>
-          </select>
-        </label>
-        <label className="check-line">
-          <input type="checkbox" checked={form.agreed} onChange={(event) => update("agreed", event.target.checked)} />
-          <span>I understand this estimate is not a loan approval, and the insurance line can change after a flood quote.</span>
-        </label>
-        {error && <p className="form-error" role="alert">{error}</p>}
-        <div className="btn-row">
-          <Link to="/prequalify/monthly" className="btn btn-ghost">Back</Link>
-          <button type="submit" className="btn btn-primary">Finish pre-qualification</button>
-        </div>
-      </form>
+      {form}
     </Shell>
   );
 }
 
+export function PrequalAccount() {
+  return <BuyerAuthPage next="/prequalify/done" step="4" backTo="/prequalify/monthly" />;
+}
+
+export function AccountPage() {
+  return <BuyerAuthPage next="/dashboard" />;
+}
+
 export function PrequalDone() {
   useTitle("Pre-qualified — Stillwater");
-  const { state, figures } = useAccount();
+  const { figures, signedIn } = useAccount();
   const covered = figures.usdBalance + 0.01 >= figures.cashToClose;
   return (
     <Shell
-      title={state.prequalified ? "Your funds are set" : "Set the funds first"}
-      lede={state.prequalified ? "Marquis Court is on your desk with a down payment and a monthly cost." : "Finish the short file and the down payment will be saved here."}
+      title={signedIn ? "Your funds are set" : "Create your account first"}
+      lede={signedIn ? "Marquis Court is on your desk with a down payment and a monthly cost that belong to this account." : "Create an account so this file stays yours."}
     >
       <div className="done-grid">
         <div>
