@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { loadTerms, recordPurchase } from "./admin.js";
+import { loadTerms, recordPurchase, refreshDesk } from "./admin.js";
 import { allocate, buildFigures, cents, freshAccount, RATES, splitAcrossAssets } from "./data.js";
 
 const KEY = "stillwater-desk-v1";
@@ -31,6 +31,7 @@ export function AccountProvider({ children }) {
   }, [state]);
 
   useEffect(() => {
+    refreshDesk().then(() => setTerms(loadTerms()));
     const refresh = () => setTerms(loadTerms());
     window.addEventListener("stillwater-admin", refresh);
     window.addEventListener("storage", refresh);

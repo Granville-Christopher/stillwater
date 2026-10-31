@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
+  addDeposit,
   adminCodeConfigured,
   adminSessionOn,
+  checkAdminService,
   enterAdmin,
-  addDeposit,
   leaveAdmin,
   loadAdmin,
   RAIL_IDS,
+  refreshDesk,
   saveDownPayment,
   savePaymentDetails,
 } from "../admin.js";
@@ -19,6 +21,7 @@ const LABELS = { usdc: "USD Coin", btc: "Bitcoin", eth: "Ethereum" };
 export function FundingPanel() {
   const [details, setDetails] = useState(loadAdmin);
   useEffect(() => {
+    refreshDesk().then(setDetails);
     const refresh = () => setDetails(loadAdmin());
     window.addEventListener("stillwater-admin", refresh);
     window.addEventListener("storage", refresh);
@@ -80,16 +83,22 @@ export function AdminPage() {
   const [depositInput, setDepositInput] = useState("");
   const [fileError, setFileError] = useState("");
   const [fileNote, setFileNote] = useState("");
+  const [service, setService] = useState({ mongo: false, admin: adminCodeConfigured() });
 
   useEffect(() => {
+    checkAdminService().then(setService);
+    refreshDesk().then((desk) => {
+      setData(desk);
+      setDownInput(String(desk.downPayment));
+    });
     const refresh = () => setData(loadAdmin());
     window.addEventListener("stillwater-admin", refresh);
     return () => window.removeEventListener("stillwater-admin", refresh);
   }, []);
 
-  function unlock(event) {
+  async function unlock(event) {
     event.preventDefault();
-    const result = enterAdmin(code);
+    const result = await enterAdmin(code);
     if (!result.ok) {
       setError(result.error);
       return;
@@ -97,12 +106,14 @@ export function AdminPage() {
     setError("");
     setCode("");
     setOpen(true);
-    setData(loadAdmin());
+    const desk = await refreshDesk();
+    setData(desk);
+    setDownInput(String(desk.downPayment));
   }
 
-  function saveDown(event) {
+  async function saveDown(event) {
     event.preventDefault();
-    const result = saveDownPayment(downInput);
+    const result = await saveDownPayment(downInput);
     if (!result.ok) {
       setFileError(result.error);
       setFileNote("");
@@ -113,9 +124,9 @@ export function AdminPage() {
     setData(loadAdmin());
   }
 
-  function recordDeposit(event) {
+  async function recordDeposit(event) {
     event.preventDefault();
-    const result = addDeposit(depositInput);
+    const result = await addDeposit(depositInput);
     if (!result.ok) {
       setFileError(result.error);
       setFileNote("");
@@ -143,10 +154,17 @@ export function AdminPage() {
     }));
   }
 
-  function saveDetails(event) {
+  async function saveDetails(event) {
     event.preventDefault();
-    savePaymentDetails({ rails: data.rails, wire: data.wire, cash: data.cash });
+    const result = await savePaymentDetails({ rails: data.rails, wire: data.wire, cash: data.cash });
+    if (!result.ok) {
+      setFileError(result.error);
+      setSaved(false);
+      return;
+    }
+    setFileError("");
     setSaved(true);
+    setData(loadAdmin());
   }
 
   return (
@@ -159,14 +177,14 @@ export function AdminPage() {
         <form className="panel stack-form admin-card" onSubmit={unlock}>
           <p className="eyebrow">Admin</p>
           <h1>Open the admin desk</h1>
-          <p>The code is the value of VITE_ADMIN_CODE in the environment. It is not created in this browser.</p>
+          <p>Enter the admin code set in the environment. Payment details are stored in MongoDB once Vercel is connected.</p>
           <label>
             Admin code
             <input type="password" value={code} onChange={(event) => setCode(event.target.value)} autoComplete="current-password" />
           </label>
-          {!adminCodeConfigured() && <p className="form-error" role="alert">Set VITE_ADMIN_CODE in .env, then restart the site.</p>}
+          {!service.admin && !adminCodeConfigured() && <p className="form-error" role="alert">Set ADMIN_CODE on Vercel, or VITE_ADMIN_CODE in .env.</p>}
           {error && <p className="form-error" role="alert">{error}</p>}
-          <button type="submit" className="btn btn-primary" disabled={!adminCodeConfigured()}>Open</button>
+          <button type="submit" className="btn btn-primary" disabled={!service.admin && !adminCodeConfigured()}>Open</button>
         </form>
       ) : (
         <div className="admin-body">
@@ -280,7 +298,7 @@ export function AdminPage() {
           <section className="panel">
             <h2>People who paid</h2>
             {data.purchases.length === 0 ? (
-              <p>No purchase has been recorded on this browser yet.</p>
+              <p>No purchase has been recorded yet.</p>
             ) : (
               <div className="table-wrap">
                 <table>
