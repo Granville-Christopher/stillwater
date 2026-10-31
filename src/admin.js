@@ -53,14 +53,6 @@ export function loadAdmin() {
   }
 }
 
-function expectedAdminCode() {
-  return String(import.meta.env.VITE_ADMIN_CODE || "").trim();
-}
-
-export function adminCodeConfigured() {
-  return expectedAdminCode().length > 0;
-}
-
 export function adminSessionOn() {
   return sessionStorage.getItem(SESSION) === "1";
 }
@@ -94,7 +86,7 @@ export async function checkAdminService() {
   try {
     return await request("/api/health");
   } catch {
-    return { ok: false, mongo: false, admin: adminCodeConfigured() };
+    return { ok: false, mongo: false, admin: false };
   }
 }
 
@@ -109,15 +101,9 @@ export async function enterAdmin(code) {
     sessionStorage.setItem(SESSION_CODE, next);
     return { ok: true };
   } catch (error) {
-    if (error.status === 401 || error.status === 503) {
-      return { ok: false, error: error.message };
-    }
-    const expected = expectedAdminCode();
-    if (!expected) return { ok: false, error: "Set ADMIN_CODE on Vercel, or VITE_ADMIN_CODE in .env." };
-    if (next !== expected) return { ok: false, error: "That code does not match." };
-    sessionStorage.setItem(SESSION, "1");
-    sessionStorage.setItem(SESSION_CODE, next);
-    return { ok: true };
+    if (error.status === 401) return { ok: false, error: "That code does not match." };
+    if (error.status === 503) return { ok: false, error: "Set ADMIN_CODE in the Vercel environment." };
+    return { ok: false, error: error.message || "The admin desk could not be opened." };
   }
 }
 

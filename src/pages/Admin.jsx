@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   addDeposit,
-  adminCodeConfigured,
   adminSessionOn,
   checkAdminService,
   enterAdmin,
@@ -83,7 +82,7 @@ export function AdminPage() {
   const [depositInput, setDepositInput] = useState("");
   const [fileError, setFileError] = useState("");
   const [fileNote, setFileNote] = useState("");
-  const [service, setService] = useState({ mongo: false, admin: adminCodeConfigured() });
+  const [service, setService] = useState({ mongo: false, admin: false });
 
   useEffect(() => {
     checkAdminService().then(setService);
@@ -177,14 +176,14 @@ export function AdminPage() {
         <form className="panel stack-form admin-card" onSubmit={unlock}>
           <p className="eyebrow">Admin</p>
           <h1>Open the admin desk</h1>
-          <p>Enter the admin code set in the environment. Payment details are stored in MongoDB once Vercel is connected.</p>
+          <p>Enter the admin code. The server checks ADMIN_CODE. That value is not in the public site.</p>
           <label>
             Admin code
             <input type="password" value={code} onChange={(event) => setCode(event.target.value)} autoComplete="current-password" />
           </label>
-          {!service.admin && !adminCodeConfigured() && <p className="form-error" role="alert">Set ADMIN_CODE on Vercel, or VITE_ADMIN_CODE in .env.</p>}
+          {!service.admin && <p className="form-error" role="alert">Set ADMIN_CODE in the Vercel environment, then redeploy.</p>}
           {error && <p className="form-error" role="alert">{error}</p>}
-          <button type="submit" className="btn btn-primary" disabled={!service.admin && !adminCodeConfigured()}>Open</button>
+          <button type="submit" className="btn btn-primary">Open</button>
         </form>
       ) : (
         <div className="admin-body">
