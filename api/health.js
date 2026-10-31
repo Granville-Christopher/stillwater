@@ -13,6 +13,8 @@ export default function handler(req, res) {
     admin: Boolean(String(env.ADMIN_CODE || "").trim()),
     mongo: Boolean(String(env.MONGODB_URI || "").trim()),
     envNames: Object.keys(env).filter((key) => /admin|mongo/i.test(key)),
-    deploy: "env-standalone-1",
+    vercel: Boolean(env.VERCEL),
+    vercelEnv: env.VERCEL_ENV || "",
+    deploy: "env-static-build-1",
   });
 }
