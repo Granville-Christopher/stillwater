@@ -12,7 +12,7 @@ export default async function handler(req, res) {
   try {
     const collection = await purchaseCollection();
     if (req.method === "GET") {
-      if (!requireAdmin(req, res)) return;
+      if (!(await requireAdmin(req, res))) return;
       const purchases = await collection.find({}).sort({ at: -1 }).limit(200).toArray();
       res.status(200).json({
         ok: true,

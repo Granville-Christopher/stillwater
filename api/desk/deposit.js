@@ -13,7 +13,7 @@ export default async function handler(req, res) {
     fail(res, 405, "Use POST.");
     return;
   }
-  if (!requireAdmin(req, res)) return;
+  if (!(await requireAdmin(req, res))) return;
   try {
     const usdAmount = cents(Number(readBody(req).amount));
     if (!Number.isFinite(usdAmount) || usdAmount <= 0) {

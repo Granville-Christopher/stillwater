@@ -16,7 +16,7 @@ export default async function handler(req, res) {
       return;
     }
     if (req.method === "PUT") {
-      if (!requireAdmin(req, res)) return;
+      if (!(await requireAdmin(req, res))) return;
       const body = readBody(req);
       const current = await loadDeskDoc(collection);
       const desk = await saveDeskDoc(collection, {

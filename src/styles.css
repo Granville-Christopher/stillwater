@@ -290,7 +290,12 @@ legend { font-weight: 620; margin-bottom: 8px; }
 .rail-list span, .rail-list em { overflow-wrap: anywhere; font-style: normal; color: var(--soft); }
 .admin-shell { min-height: 100vh; background: var(--mist); }
 .admin-bar { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 16px 22px; border-bottom: 1px solid var(--line); background: white; }
-.admin-card, .admin-body { width: min(980px, calc(100% - 32px)); margin: 28px auto 48px; display: grid; gap: 18px; }
+.admin-card, .admin-body { margin: 28px auto 48px; display: grid; gap: 18px; }
+.admin-card { width: min(440px, calc(100% - 32px)); }
+.admin-body { width: min(980px, calc(100% - 32px)); }
+.auth-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.auth-switch button { border: 1px solid var(--line); background: white; border-radius: 12px; padding: 10px 12px; font-weight: 620; }
+.auth-switch button.on { border-color: var(--blue-deep); background: #eaf5fc; color: var(--blue-deep); }
 .rail-form { border: 1px solid var(--line); border-radius: 14px; padding: 12px; display: grid; gap: 10px; }
 .rail-form legend { font-weight: 700; padding: 0 6px; }
 .receipt h3 { font-family: var(--sans); font-size: 1rem; }

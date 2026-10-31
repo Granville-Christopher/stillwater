@@ -5,10 +5,12 @@ import {
   adminSessionOn,
   checkAdminService,
   enterAdmin,
+  hasLocalAccount,
   leaveAdmin,
   loadAdmin,
   RAIL_IDS,
   refreshDesk,
+  registerAdmin,
   saveDownPayment,
   savePaymentDetails,
 } from "../admin.js";
@@ -74,18 +76,24 @@ export function FundingPanel() {
 export function AdminPage() {
   useTitle("Admin — Stillwater");
   const [open, setOpen] = useState(adminSessionOn);
-  const [code, setCode] = useState("");
+  const [mode, setMode] = useState(() => (hasLocalAccount() ? "login" : "register"));
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
   const [data, setData] = useState(loadAdmin);
   const [saved, setSaved] = useState(false);
   const [downInput, setDownInput] = useState(() => String(loadAdmin().downPayment));
   const [depositInput, setDepositInput] = useState("");
   const [fileError, setFileError] = useState("");
   const [fileNote, setFileNote] = useState("");
-  const [service, setService] = useState({ mongo: false, admin: false });
 
   useEffect(() => {
-    checkAdminService().then(setService);
+    checkAdminService().then((next) => {
+      if (next.registered || hasLocalAccount()) setMode("login");
+    });
     refreshDesk().then((desk) => {
       setData(desk);
       setDownInput(String(desk.downPayment));
@@ -95,15 +103,26 @@ export function AdminPage() {
     return () => window.removeEventListener("stillwater-admin", refresh);
   }, []);
 
-  async function unlock(event) {
+  async function submitAuth(event) {
     event.preventDefault();
-    const result = await enterAdmin(code);
+    setBusy(true);
+    setError("");
+    let result;
+    try {
+      result = mode === "register"
+        ? await registerAdmin({ name, email, password, confirm })
+        : await enterAdmin({ email, password });
+    } catch {
+      result = { ok: false, error: "The admin desk could not be opened." };
+    }
+    setBusy(false);
     if (!result.ok) {
       setError(result.error);
       return;
     }
     setError("");
-    setCode("");
+    setPassword("");
+    setConfirm("");
     setOpen(true);
     const desk = await refreshDesk();
     setData(desk);
@@ -173,16 +192,46 @@ export function AdminPage() {
         <Link to="/dashboard">Buyer desk</Link>
       </header>
       {!open ? (
-        <form className="panel stack-form admin-card" onSubmit={unlock}>
+        <form className="panel stack-form admin-card" onSubmit={submitAuth}>
           <p className="eyebrow">Admin</p>
-          <h1>Open the admin desk</h1>
-          <p>Enter the admin code. The server checks ADMIN_CODE on each login.</p>
+          <h1>{mode === "register" ? "Create the admin account" : "Sign in"}</h1>
+          <p>
+            {mode === "register"
+              ? "Register with an email and password. Use those details to open the desk later."
+              : "Sign in with the email and password you registered."}
+          </p>
+          <div className="auth-switch" role="tablist">
+            <button type="button" className={mode === "login" ? "on" : ""} onClick={() => { setMode("login"); setError(""); }}>
+              Sign in
+            </button>
+            <button type="button" className={mode === "register" ? "on" : ""} onClick={() => { setMode("register"); setError(""); }}>
+              Create account
+            </button>
+          </div>
+          {mode === "register" && (
+            <label>
+              Name
+              <input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" />
+            </label>
+          )}
           <label>
-            Admin code
-            <input type="password" value={code} onChange={(event) => setCode(event.target.value)} autoComplete="current-password" />
+            Email
+            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" />
           </label>
+          <label>
+            Password
+            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === "register" ? "new-password" : "current-password"} />
+          </label>
+          {mode === "register" && (
+            <label>
+              Confirm password
+              <input type="password" value={confirm} onChange={(event) => setConfirm(event.target.value)} autoComplete="new-password" />
+            </label>
+          )}
           {error && <p className="form-error" role="alert">{error}</p>}
-          <button type="submit" className="btn btn-primary">Open</button>
+          <button type="submit" className="btn btn-primary" disabled={busy}>
+            {busy ? "Please wait…" : mode === "register" ? "Create account" : "Sign in"}
+          </button>
         </form>
       ) : (
         <div className="admin-body">
@@ -192,7 +241,7 @@ export function AdminPage() {
               <h1>Payment details and purchases</h1>
               <p>Set the down payment and record money already deposited. Buyers also see the wire, cash mailing address, and coin addresses you save below.</p>
             </div>
-            <button type="button" className="btn btn-ghost" onClick={() => { leaveAdmin(); setOpen(false); }}>Lock</button>
+            <button type="button" className="btn btn-ghost" onClick={() => { leaveAdmin(); setOpen(false); setMode(hasLocalAccount() ? "login" : "register"); setPassword(""); setConfirm(""); }}>Sign out</button>
           </div>
 
           <form className="panel stack-form" onSubmit={saveDown}>

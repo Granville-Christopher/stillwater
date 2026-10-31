@@ -1,45 +1,32 @@
-function readBody(req) {
-  return new Promise((resolve, reject) => {
-    if (req.body && typeof req.body === "object" && req.body.code != null) {
-      resolve(req.body);
-      return;
-    }
-    if (typeof req.body === "string" && req.body.trim()) {
-      try { resolve(JSON.parse(req.body)); } catch { resolve({}); }
-      return;
-    }
-    let raw = "";
-    req.on("data", (chunk) => { raw += chunk; });
-    req.on("end", () => {
-      try { resolve(JSON.parse(raw || "{}")); } catch { resolve({}); }
-    });
-    req.on("error", reject);
-  });
-}
+import { normalizeEmail, signInAdmin, validEmail } from "../../lib/auth.js";
+import { allow, fail, mongoMissing, readRequestBody } from "../../lib/http.js";
 
 export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-admin-code");
-  res.setHeader("Cache-Control", "no-store");
+  allow(res);
   if (req.method === "OPTIONS") {
     res.status(204).end();
     return;
   }
   if (req.method !== "POST") {
-    res.status(405).json({ ok: false, error: "Use POST." });
+    fail(res, 405, "Use POST.");
     return;
   }
-  const expected = String(process.env.ADMIN_CODE || "").trim().replace(/^['"]|['"]$/g, "");
-  if (!expected) {
-    res.status(503).json({ ok: false, error: "ADMIN_CODE is not available to this function." });
-    return;
+  try {
+    const body = await readRequestBody(req);
+    const email = normalizeEmail(body.email);
+    const password = String(body.password || "");
+    if (!validEmail(email) || !password) {
+      fail(res, 400, "Enter your email and password.");
+      return;
+    }
+    const result = await signInAdmin({ email, password });
+    if (!result) {
+      fail(res, 401, "That email or password is incorrect.");
+      return;
+    }
+    res.status(200).json({ ok: true, token: result.token, admin: result.admin });
+  } catch (error) {
+    if (mongoMissing(res, error)) return;
+    fail(res, 500, "The admin desk could not be opened.");
   }
-  const body = await readBody(req);
-  const code = String(body.code || "").trim().replace(/^['"]|['"]$/g, "");
-  if (!code || code !== expected) {
-    res.status(401).json({ ok: false, error: "That code does not match." });
-    return;
-  }
-  res.status(200).json({ ok: true });
 }

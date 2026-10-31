@@ -1,8 +1,9 @@
 import { cents, DEFAULT_DOWN_PAYMENT, PREQUAL_CAP, PRICE, usd } from "./data.js";
 
 const KEY = "stillwater-admin-v1";
-const SESSION = "stillwater-admin-ok";
-const SESSION_CODE = "stillwater-admin-code";
+const SESSION = "stillwater-admin-session";
+const SESSION_TOKEN = "stillwater-admin-token";
+const ACCOUNT_KEY = "stillwater-admin-account";
 
 export const RAIL_IDS = ["usdc", "btc", "eth"];
 
@@ -57,15 +58,92 @@ export function adminSessionOn() {
   return sessionStorage.getItem(SESSION) === "1";
 }
 
-function sessionCode() {
-  return sessionStorage.getItem(SESSION_CODE) || "";
+export function hasLocalAccount() {
+  try {
+    return Boolean(JSON.parse(localStorage.getItem(ACCOUNT_KEY) || "null")?.email);
+  } catch {
+    return false;
+  }
+}
+
+function sessionToken() {
+  return sessionStorage.getItem(SESSION_TOKEN) || "";
+}
+
+function isLocalSession() {
+  return sessionToken().startsWith("local.");
+}
+
+function openSession(token) {
+  sessionStorage.setItem(SESSION, "1");
+  if (token) sessionStorage.setItem(SESSION_TOKEN, token);
 }
 
 function adminHeaders() {
   const headers = { "Content-Type": "application/json" };
-  const code = sessionCode();
-  if (code) headers["x-admin-code"] = code;
+  const token = sessionToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
   return headers;
+}
+
+function normalizeEmail(email) {
+  return String(email || "").trim().toLowerCase();
+}
+
+function validateAccount({ email, password, confirm, registering }) {
+  const nextEmail = normalizeEmail(email);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nextEmail)) {
+    return { ok: false, error: "Enter a valid email address." };
+  }
+  if (String(password || "").length < 8) {
+    return { ok: false, error: "Use a password with at least 8 characters." };
+  }
+  if (registering && password !== confirm) {
+    return { ok: false, error: "The passwords do not match." };
+  }
+  return { ok: true, email: nextEmail };
+}
+
+async function hashLocalPassword(password, salt) {
+  const data = new TextEncoder().encode(`${salt}:${password}`);
+  const buf = await crypto.subtle.digest("SHA-256", data);
+  return [...new Uint8Array(buf)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function readLocalAccount() {
+  try {
+    return JSON.parse(localStorage.getItem(ACCOUNT_KEY) || "null");
+  } catch {
+    return null;
+  }
+}
+
+async function registerLocal({ name, email, password }) {
+  if (readLocalAccount()) {
+    return { ok: false, error: "An admin account already exists on this browser. Sign in instead." };
+  }
+  const salt = crypto.randomUUID();
+  localStorage.setItem(ACCOUNT_KEY, JSON.stringify({
+    email,
+    name: String(name || "").trim(),
+    salt,
+    passwordHash: await hashLocalPassword(password, salt),
+  }));
+  openSession(`local.${crypto.randomUUID()}`);
+  return { ok: true };
+}
+
+async function loginLocal({ email, password }) {
+  const account = readLocalAccount();
+  if (!account) {
+    return { ok: false, error: "Create an admin account first." };
+  }
+  const passwordHash = await hashLocalPassword(password, account.salt);
+  if (account.email !== email || passwordHash !== account.passwordHash) {
+    return { ok: false, error: "That email or password is incorrect." };
+  }
+  openSession(`local.${crypto.randomUUID()}`);
+  return { ok: true };
 }
 
 async function request(path, options = {}) {
@@ -86,30 +164,49 @@ export async function checkAdminService() {
   try {
     return await request("/api/health");
   } catch {
-    return { ok: false, mongo: false, admin: false };
+    return { ok: false, mongo: false, registered: hasLocalAccount() };
   }
 }
 
-export async function enterAdmin(code) {
-  const next = code.trim();
+export async function registerAdmin({ name, email, password, confirm }) {
+  const check = validateAccount({ email, password, confirm, registering: true });
+  if (!check.ok) return check;
   try {
-    await request("/api/admin/login", {
+    const result = await request("/api/admin/register", {
       method: "POST",
-      body: JSON.stringify({ code: next }),
+      body: JSON.stringify({ name, email: check.email, password }),
     });
-    sessionStorage.setItem(SESSION, "1");
-    sessionStorage.setItem(SESSION_CODE, next);
+    openSession(result.token);
     return { ok: true };
   } catch (error) {
-    if (error.status === 401) return { ok: false, error: "That code does not match." };
-    if (error.status === 503) return { ok: false, error: "The server could not read an admin code." };
-    return { ok: false, error: error.message || "The admin desk could not be opened." };
+    if (error.status === 400 || error.status === 409) {
+      return { ok: false, error: error.message };
+    }
+    return registerLocal({ name, email: check.email, password });
+  }
+}
+
+export async function enterAdmin({ email, password }) {
+  const check = validateAccount({ email, password, registering: false });
+  if (!check.ok) return check;
+  try {
+    const result = await request("/api/admin/login", {
+      method: "POST",
+      body: JSON.stringify({ email: check.email, password }),
+    });
+    openSession(result.token);
+    return { ok: true };
+  } catch (error) {
+    if (error.status === 400 || error.status === 401) {
+      return { ok: false, error: error.message || "That email or password is incorrect." };
+    }
+    return loginLocal({ email: check.email, password });
   }
 }
 
 export function leaveAdmin() {
   sessionStorage.removeItem(SESSION);
-  sessionStorage.removeItem(SESSION_CODE);
+  sessionStorage.removeItem(SESSION_TOKEN);
 }
 
 export function loadTerms() {
@@ -125,7 +222,7 @@ export async function refreshDesk() {
   try {
     const [deskRes, purchaseRes] = await Promise.all([
       request("/api/desk"),
-      adminSessionOn()
+      adminSessionOn() && !isLocalSession()
         ? request("/api/desk/purchases").catch(() => ({ purchases: loadAdmin().purchases }))
         : Promise.resolve({ purchases: loadAdmin().purchases }),
     ]);
@@ -141,15 +238,19 @@ export async function saveDownPayment(amount) {
   const next = cents(Number(amount));
   if (!Number.isFinite(next) || next <= 0) return { ok: false, error: "Enter a down payment greater than zero." };
   if (next > PRICE) return { ok: false, error: "The down payment cannot be more than the price." };
-  try {
-    const result = await request("/api/desk/down-payment", {
-      method: "POST",
-      body: JSON.stringify({ amount: next }),
-    });
-    cacheDesk(mergeDesk({ ...loadAdmin(), ...result.desk }));
-    return { ok: true };
-  } catch (error) {
-    if (error.status) return { ok: false, error: error.message };
+  if (!isLocalSession()) {
+    try {
+      const result = await request("/api/desk/down-payment", {
+        method: "POST",
+        body: JSON.stringify({ amount: next }),
+      });
+      cacheDesk(mergeDesk({ ...loadAdmin(), ...result.desk }));
+      return { ok: true };
+    } catch (error) {
+      if (error.status && error.status !== 503) return { ok: false, error: error.message };
+    }
+  }
+  {
     const data = loadAdmin();
     if (next < data.deposited) return { ok: false, error: `The down payment cannot be less than the ${usd(data.deposited)} already deposited.` };
     data.downPayment = next;
@@ -161,15 +262,19 @@ export async function saveDownPayment(amount) {
 export async function addDeposit(amount) {
   const usdAmount = cents(Number(amount));
   if (!Number.isFinite(usdAmount) || usdAmount <= 0) return { ok: false, error: "Enter an amount greater than zero." };
-  try {
-    const result = await request("/api/desk/deposit", {
-      method: "POST",
-      body: JSON.stringify({ amount: usdAmount }),
-    });
-    cacheDesk(mergeDesk({ ...loadAdmin(), ...result.desk }));
-    return { ok: true, deposited: result.deposited };
-  } catch (error) {
-    if (error.status) return { ok: false, error: error.message };
+  if (!isLocalSession()) {
+    try {
+      const result = await request("/api/desk/deposit", {
+        method: "POST",
+        body: JSON.stringify({ amount: usdAmount }),
+      });
+      cacheDesk(mergeDesk({ ...loadAdmin(), ...result.desk }));
+      return { ok: true, deposited: result.deposited };
+    } catch (error) {
+      if (error.status && error.status !== 503) return { ok: false, error: error.message };
+    }
+  }
+  {
     const data = loadAdmin();
     const ceiling = Math.min(PREQUAL_CAP, data.downPayment);
     const room = cents(ceiling - data.deposited);
@@ -189,15 +294,19 @@ export async function addDeposit(amount) {
 }
 
 export async function savePaymentDetails({ rails, wire, cash }) {
-  try {
-    const result = await request("/api/desk", {
-      method: "PUT",
-      body: JSON.stringify({ rails, wire, cash }),
-    });
-    cacheDesk(mergeDesk({ ...loadAdmin(), ...result.desk }));
-    return { ok: true };
-  } catch (error) {
-    if (error.status) return { ok: false, error: error.message };
+  if (!isLocalSession()) {
+    try {
+      const result = await request("/api/desk", {
+        method: "PUT",
+        body: JSON.stringify({ rails, wire, cash }),
+      });
+      cacheDesk(mergeDesk({ ...loadAdmin(), ...result.desk }));
+      return { ok: true };
+    } catch (error) {
+      if (error.status && error.status !== 503) return { ok: false, error: error.message };
+    }
+  }
+  {
     const data = loadAdmin();
     data.rails = rails;
     data.wire = wire;
@@ -208,17 +317,17 @@ export async function savePaymentDetails({ rails, wire, cash }) {
 }
 
 export async function recordPurchase(purchase) {
-  try {
-    await request("/api/desk/purchases", {
-      method: "POST",
-      body: JSON.stringify(purchase),
-    });
-    const data = loadAdmin();
-    data.purchases = [purchase, ...data.purchases];
-    cacheDesk(data);
-  } catch {
-    const data = loadAdmin();
-    data.purchases = [purchase, ...data.purchases];
-    cacheDesk(data);
+  if (!isLocalSession()) {
+    try {
+      await request("/api/desk/purchases", {
+        method: "POST",
+        body: JSON.stringify(purchase),
+      });
+    } catch {
+      // Buyer receipts still stay on this browser if the server is unavailable.
+    }
   }
+  const data = loadAdmin();
+  data.purchases = [purchase, ...data.purchases];
+  cacheDesk(data);
 }
