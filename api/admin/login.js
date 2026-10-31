@@ -1,5 +1,3 @@
-const { env } = require("node:process");
-
 function readBody(req) {
   return new Promise((resolve, reject) => {
     if (req.body && typeof req.body === "object" && req.body.code != null) {
@@ -19,7 +17,7 @@ function readBody(req) {
   });
 }
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-admin-code");
@@ -32,7 +30,7 @@ module.exports = async function handler(req, res) {
     res.status(405).json({ ok: false, error: "Use POST." });
     return;
   }
-  const expected = String(env.ADMIN_CODE || "").trim().replace(/^['"]|['"]$/g, "");
+  const expected = String(process.env.ADMIN_CODE || "").trim().replace(/^['"]|['"]$/g, "");
   if (!expected) {
     res.status(503).json({ ok: false, error: "ADMIN_CODE is not available to this function." });
     return;
@@ -44,4 +42,4 @@ module.exports = async function handler(req, res) {
     return;
   }
   res.status(200).json({ ok: true });
-};
+}
