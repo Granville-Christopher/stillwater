@@ -181,11 +181,6 @@ export function AdminPage() {
             Admin code
             <input type="password" value={code} onChange={(event) => setCode(event.target.value)} autoComplete="current-password" />
           </label>
-          {service.ok && !service.admin && (
-            <p className="form-error" role="alert">
-              ADMIN_CODE is saved in Vercel, but this deploy does not have it yet. Open Deployments, Redeploy the latest Production deploy, and turn off Use existing Build Cache.
-            </p>
-          )}
           {error && <p className="form-error" role="alert">{error}</p>}
           <button type="submit" className="btn btn-primary">Open</button>
         </form>
