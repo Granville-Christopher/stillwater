@@ -1,3 +1,5 @@
+import { runtimeEnv, runtimeVar } from "../lib/runtime-env.js";
+
 export const config = { runtime: "nodejs" };
 
 export default function handler(req, res) {
@@ -7,14 +9,14 @@ export default function handler(req, res) {
     res.status(204).end();
     return;
   }
-  const env = process.env || {};
+  const env = runtimeEnv();
   res.status(200).json({
     ok: true,
-    admin: Boolean(String(env.ADMIN_CODE || "").trim()),
-    mongo: Boolean(String(env.MONGODB_URI || "").trim()),
+    admin: Boolean(runtimeVar("ADMIN_CODE")),
+    mongo: Boolean(runtimeVar("MONGODB_URI")),
     envNames: Object.keys(env).filter((key) => /admin|mongo/i.test(key)),
     vercel: Boolean(env.VERCEL),
     vercelEnv: env.VERCEL_ENV || "",
-    deploy: "env-static-build-1",
+    deploy: "env-runtime-2",
   });
 }
