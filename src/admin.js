@@ -102,7 +102,7 @@ export async function enterAdmin(code) {
     return { ok: true };
   } catch (error) {
     if (error.status === 401) return { ok: false, error: "That code does not match." };
-    if (error.status === 503) return { ok: false, error: "Set ADMIN_CODE in the Vercel environment." };
+    if (error.status === 503) return { ok: false, error: "The server could not read an admin code." };
     return { ok: false, error: error.message || "The admin desk could not be opened." };
   }
 }
