@@ -1,5 +1,6 @@
-import { adminCode, adminConfigured } from "../../lib/desk.js";
 import { allow, fail, readBody } from "../../lib/http.js";
+
+export const config = { runtime: "nodejs" };
 
 export default function handler(req, res) {
   allow(res);
@@ -11,12 +12,13 @@ export default function handler(req, res) {
     fail(res, 405, "Use POST.");
     return;
   }
-  if (!adminConfigured()) {
+  const expected = String((process.env || {}).ADMIN_CODE || "").trim();
+  if (!expected) {
     fail(res, 503, "Set ADMIN_CODE in the Vercel environment.");
     return;
   }
   const code = String(readBody(req).code || "").trim();
-  if (code !== adminCode()) {
+  if (code !== expected) {
     fail(res, 401, "That code does not match.");
     return;
   }
