@@ -176,12 +176,16 @@ export function AdminPage() {
         <form className="panel stack-form admin-card" onSubmit={unlock}>
           <p className="eyebrow">Admin</p>
           <h1>Open the admin desk</h1>
-          <p>Enter the admin code. The server checks ADMIN_CODE. That value is not in the public site.</p>
+          <p>Enter the admin code. The server checks ADMIN_CODE on each login.</p>
           <label>
             Admin code
             <input type="password" value={code} onChange={(event) => setCode(event.target.value)} autoComplete="current-password" />
           </label>
-          {!service.admin && <p className="form-error" role="alert">Set ADMIN_CODE in the Vercel environment, then redeploy.</p>}
+          {service.ok && !service.admin && (
+            <p className="form-error" role="alert">
+              The live server still does not have ADMIN_CODE. In Vercel, open Settings → Environment Variables, add ADMIN_CODE for Production, then Redeploy.
+            </p>
+          )}
           {error && <p className="form-error" role="alert">{error}</p>}
           <button type="submit" className="btn btn-primary">Open</button>
         </form>
