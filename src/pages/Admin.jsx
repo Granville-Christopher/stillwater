@@ -288,22 +288,66 @@ export function AdminPage() {
             <button type="submit" className="btn btn-primary">Save down payment</button>
           </form>
 
+          <section className="panel">
+            <div className="desk-head">
+              <div>
+                <h2>Registered buyers</h2>
+                <p>{buyers.length === 0 ? "No buyer has created an account yet." : `${buyers.length} buyer${buyers.length === 1 ? "" : "s"} on file. Select a row, then add funds below.`}</p>
+              </div>
+            </div>
+            {buyers.length > 0 && (
+              <div className="table-wrap">
+                <table className="people-table">
+                  <thead>
+                    <tr>
+                      <th></th>
+                      <th>Buyer</th>
+                      <th>Email</th>
+                      <th>Phone</th>
+                      <th>Pre-qualified funds</th>
+                      <th>Payments</th>
+                      <th>Joined</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {buyers.map((buyer) => {
+                      const id = buyer.id || buyer.email;
+                      const selected = id === buyerId;
+                      const paid = (buyer.payments || []).reduce((sum, payment) => sum + (Number(payment.usd) || 0), 0);
+                      return (
+                        <tr key={id} className={selected ? "is-selected" : ""} onClick={() => { setBuyerId(id); setFileNote(""); }}>
+                          <td>
+                            <button type="button" className={selected ? "btn btn-primary" : "btn btn-ghost"} onClick={(event) => { event.stopPropagation(); setBuyerId(id); setFileNote(""); }}>
+                              {selected ? "Selected" : "Select"}
+                            </button>
+                          </td>
+                          <td>
+                            <strong>{buyer.name || "Buyer"}</strong>
+                            <em>{buyer.prequalified ? "Pre-qualified" : "Account only"}</em>
+                          </td>
+                          <td>{buyer.email || "—"}</td>
+                          <td>{buyer.phone || "—"}</td>
+                          <td>{usd(buyer.deposited || 0)}</td>
+                          <td>{usd(paid, 2)}</td>
+                          <td>{buyer.createdAt ? when(buyer.createdAt) : "—"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
           <form className="panel stack-form" onSubmit={recordDeposit}>
             <h2>Already deposited</h2>
-            <p>Choose the buyer first. The amount is added only to that person's pre-qualified funds, up to {usd(PREQUAL_CAP)}.</p>
-            <label>
-              Buyer
-              <select value={buyerId} onChange={(event) => { setBuyerId(event.target.value); setFileNote(""); }}>
-                {buyers.length === 0 && <option value="">No buyer has created an account yet</option>}
-                {buyers.map((buyer) => (
-                  <option key={buyer.id || buyer.email} value={buyer.id || buyer.email}>
-                    {(buyer.name || "Buyer")} · {buyer.email} · {usd(buyer.deposited || 0)}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <p>
+              {selectedBuyer
+                ? `Adding only to ${selectedBuyer.name || selectedBuyer.email}. Pre-qualified funds cannot go above ${usd(PREQUAL_CAP)}.`
+                : `Select a buyer in the table first. The amount is added only to that person, up to ${usd(PREQUAL_CAP)}.`}
+            </p>
             <div className="fund-readout">
-              <span>This buyer's pre-qualified funds</span>
+              <span>{selectedBuyer ? `${selectedBuyer.name || selectedBuyer.email}'s pre-qualified funds` : "Pre-qualified funds"}</span>
               <strong>{usd(selectedBuyer?.deposited || 0)}</strong>
               <em>{usd(Math.max(0, PREQUAL_CAP - (selectedBuyer?.deposited || 0)))} still fits under {usd(PREQUAL_CAP)}</em>
             </div>

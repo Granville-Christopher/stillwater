@@ -1,0 +1,13 @@
+---
+description: Commit and push to GitHub after every finished job
+alwaysApply: true
+---
+
+# Push after every job
+
+When a task is finished, commit the relevant project files and `git push` to `origin` on the current branch. Do not wait to be asked.
+
+- Do not commit `.env` or other secrets
+- Use a short commit message that says why the change exists
+- If there is nothing to commit, still push if the branch is ahead of origin
+- If push fails, say so and stop

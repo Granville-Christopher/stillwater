@@ -149,6 +149,7 @@ async function registerLocal({ name, email, password, phone }) {
     name: String(name || "").trim(),
     phone: String(phone || "").trim(),
     prequalified: true,
+    createdAt: new Date().toISOString(),
   }, {
     salt,
     passwordHash: await hashLocalPassword(password, salt),
