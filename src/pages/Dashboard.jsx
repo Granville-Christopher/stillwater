@@ -557,42 +557,70 @@ export function DownBalancePage() {
 export function ActivityPage() {
   useTitle("Activity — Stillwater");
   const { state } = useAccount();
+  const totalPaid = state.payments.reduce((sum, payment) => sum + (Number(payment.usd) || 0), 0);
   return (
     <div className="desk-page">
-      <p className="eyebrow">Activity</p>
-      <h1>Payments on this house</h1>
+      <header className="desk-head">
+        <div>
+          <p className="eyebrow">Activity</p>
+          <h1>Payments on this house</h1>
+          <p>
+            {state.payments.length === 0
+              ? "Nothing has been paid yet. The balance is waiting on the desk."
+              : `${state.payments.length} payment${state.payments.length === 1 ? "" : "s"} recorded · ${usd(totalPaid, 2)} total.`}
+          </p>
+        </div>
+      </header>
       {state.payments.length === 0 ? (
         <div className="panel empty">
-          <p>Nothing has been paid yet. The balance is waiting on the desk.</p>
+          <p>Make a payment from the coins on this desk, a wire, or a cash deposit.</p>
           <Link to="/dashboard/pay" className="btn btn-primary">Make a payment</Link>
         </div>
       ) : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>When</th>
-                <th>From</th>
-                <th>Amount</th>
-                <th>Down payment</th>
-                <th>Closing</th>
-                <th>Principal</th>
-              </tr>
-            </thead>
-            <tbody>
-              {state.payments.map((payment) => (
-                <tr key={payment.id}>
-                  <td>{when(payment.at)}</td>
-                  <td>{cryptoText(payment.asset, payment.cryptoAmount)}</td>
-                  <td>{usd(payment.usd, 2)}</td>
-                  <td>{usd(payment.toDown, 2)}</td>
-                  <td>{usd(payment.toClosing, 2)}</td>
-                  <td>{usd(payment.toPrincipal, 2)}</td>
+        <section className="panel">
+          <div className="table-wrap">
+            <table className="activity-table">
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th>Method</th>
+                  <th>Amount</th>
+                  <th>Down payment</th>
+                  <th>Closing</th>
+                  <th>Principal</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {state.payments.map((payment) => {
+                  const asset = ASSETS.find((item) => item.id === payment.asset);
+                  const method = payment.asset === "wire"
+                    ? "Wire transfer"
+                    : payment.asset === "cash"
+                      ? "Cash deposit"
+                      : asset?.name || payment.asset.toUpperCase();
+                  const detail = payment.asset !== "wire" && payment.asset !== "cash"
+                    ? cryptoText(payment.asset, payment.cryptoAmount)
+                    : "";
+                  return (
+                    <tr key={payment.id}>
+                      <td>
+                        <strong>{when(payment.at)}</strong>
+                      </td>
+                      <td>
+                        <strong>{method}</strong>
+                        {detail && <em>{detail}</em>}
+                      </td>
+                      <td className="num">{usd(payment.usd, 2)}</td>
+                      <td className="num">{usd(payment.toDown, 2)}</td>
+                      <td className="num">{usd(payment.toClosing, 2)}</td>
+                      <td className="num">{usd(payment.toPrincipal, 2)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
     </div>
   );
